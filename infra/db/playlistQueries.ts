@@ -215,6 +215,26 @@ export function publishedPlaylistsByOwnerStatement(
     .bind(value);
 }
 
+// Backs GET /api/playlists, the gallery's "browse by playlist" row: every
+// owner's public playlists, most recently updated first (as the author profile
+// orders them), up to `limit`.
+export async function listPublishedPlaylists(
+  db: D1Database,
+  limit: number,
+): Promise<PlaylistRowWithCount[]> {
+  const result = await db
+    .prepare(
+      `SELECT ${PUBLISHED_PLAYLIST_COLUMNS}
+       FROM playlists
+       WHERE ${HAS_PUBLISHED_LESSON}
+       ORDER BY updated_at DESC, id DESC
+       LIMIT ?`,
+    )
+    .bind(limit)
+    .all<PlaylistRowWithCount>();
+  return result.results ?? [];
+}
+
 // Backs GET /api/search's playlists: every owner's public playlists whose title
 // or description holds `q`, so searching for a course finds the course itself
 // (its lessons in order) and not only its lessons, newest first.

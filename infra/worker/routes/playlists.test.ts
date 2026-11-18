@@ -7,10 +7,11 @@ import {
   deletePlaylist,
   getPlaylistBySlug,
   insertPlaylist,
+  listPublishedPlaylists,
   updatePlaylist,
   type PlaylistWithLessons,
 } from "../../db/playlistQueries";
-import type { LessonRow, PlaylistRow } from "../../db/types";
+import type { LessonRow, PlaylistRow, PlaylistRowWithCount } from "../../db/types";
 import { countingRateLimiter } from "../testing/rateLimit";
 
 vi.mock("../auth/session", () => ({
@@ -24,6 +25,7 @@ vi.mock("../../db/playlistQueries", () => ({
   addLessonToPlaylist: vi.fn<() => Promise<unknown>>(),
   addLessonsToPlaylist: vi.fn<() => Promise<unknown>>(),
   getPlaylistBySlug: vi.fn<() => Promise<PlaylistWithLessons | null>>(),
+  listPublishedPlaylists: vi.fn<() => Promise<PlaylistRowWithCount[]>>(async () => []),
 }));
 
 vi.mock("../../db/slug", () => ({
@@ -258,5 +260,40 @@ describe("playlistsRoute public read", () => {
     const response = await playlistsRoute.request("https://nexteditor.dev/nope", undefined, env);
 
     expect(response.status).toBe(404);
+  });
+});
+
+describe("GET /api/playlists", () => {
+  it("lists the public playlists as summaries, for anyone", async () => {
+    vi.mocked(listPublishedPlaylists).mockResolvedValueOnce([
+      {
+        id: "playlist-1",
+        slug: "css-course",
+        owner_id: "owner",
+        title: "CSS Course",
+        description: null,
+        created_at: 0,
+        updated_at: 0,
+        lesson_count: 43,
+        first_lesson_thumbnail: "media/lessons/1/thumb.webp",
+      },
+    ]);
+
+    const res = await playlistsRoute.request("https://nexteditor.dev/", {}, env);
+
+    expect(res.status).toBe(200);
+    await expect(res.json()).resolves.toEqual({
+      playlists: [
+        {
+          slug: "css-course",
+          title: "CSS Course",
+          description: "",
+          lessonCount: 43,
+          thumbnail: "media/lessons/1/thumb.webp",
+        },
+      ],
+    });
+    expect(listPublishedPlaylists).toHaveBeenCalledWith(expect.anything(), 100);
+    expect(getCurrentUser).not.toHaveBeenCalled();
   });
 });

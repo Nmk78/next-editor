@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { findPlaylistBySlug } from "../lib/playlists";
+import { fetchPublicPlaylists, findPlaylistBySlug } from "../lib/playlists";
 import { playlistKeys, primeLessonDetails } from "../../../infra/lessons/queryKeys";
 
 // Single playlist by slug for the public detail route and the lesson page's
@@ -26,6 +26,16 @@ export function usePlaylist(slug: string | undefined) {
       return playlist;
     },
     enabled: !!slug,
+    staleTime: 60_000,
+  });
+}
+
+// Every public playlist, for the gallery's "browse by playlist" row. Live data
+// like usePlaylist: a playlist an owner creates or edits shows up within a minute.
+export function usePublicPlaylists() {
+  return useQuery({
+    queryKey: playlistKeys.index,
+    queryFn: fetchPublicPlaylists,
     staleTime: 60_000,
   });
 }

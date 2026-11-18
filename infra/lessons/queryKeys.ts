@@ -37,6 +37,8 @@ export const playlistKeys = {
   members: (playlistId: string | undefined) => ["playlists", "members", playlistId] as const,
   /** One public playlist by slug (tube's usePlaylist). */
   detail: (slug: string | undefined) => ["playlists", "detail", slug] as const,
+  /** Every public playlist, for the gallery's "browse by playlist" row (tube's usePublicPlaylists). */
+  index: ["playlists", "index"] as const,
 };
 
 export const authorKeys = {

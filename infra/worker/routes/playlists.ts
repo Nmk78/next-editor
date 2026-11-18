@@ -10,6 +10,7 @@ import {
   getPlaylistBySlug,
   insertPlaylist,
   listOwnedPlaylists,
+  listPublishedPlaylists,
   listOwnedPlaylistsForLesson,
   removeLessonFromPlaylist,
   reorderPlaylistLessons,
@@ -21,6 +22,7 @@ import {
   playlistRowToOwnedPlaylist,
   playlistRowToOwnedPlaylistWithMembership,
   playlistRowToPlaylist,
+  playlistRowToPlaylistSummary,
 } from "../../db/types";
 import {
   generateUniqueSlug,
@@ -291,6 +293,18 @@ playlistsRoute.post("/:id/reorder", requireUser, async (c) => {
   }
 
   return c.json({ success: true });
+});
+
+// The most playlists GET /api/playlists lists, enough for a row of filters
+// while keeping the response small.
+const PUBLIC_PLAYLIST_LIMIT = 100;
+
+// Public: every owner's playlists that have a published lesson, for the
+// gallery's "browse by playlist" row. Read from D1 on every request like the
+// other public catalog reads, so a new or edited playlist shows up at once.
+playlistsRoute.get("/", async (c) => {
+  const rows = await listPublishedPlaylists(c.env.DB, PUBLIC_PLAYLIST_LIMIT);
+  return c.json({ playlists: rows.map(playlistRowToPlaylistSummary) });
 });
 
 // Registered last: Hono dispatches in registration order, so a "/:slug" GET

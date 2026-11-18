@@ -58,6 +58,8 @@ function PlaylistDetailSkeleton() {
         <div className="mt-1.5 h-8 w-2/3 max-w-md rounded bg-slate-800" />
         {/* Description */}
         <div className="mt-2 h-4 w-full max-w-2xl rounded bg-slate-800" />
+        {/* "Play all" */}
+        <div className="mt-4 h-9 w-28 rounded-full bg-slate-800" />
       </div>
       <div className="grid grid-cols-1 gap-5 pb-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {Array.from({ length: 8 }, (_, i) => (

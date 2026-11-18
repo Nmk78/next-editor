@@ -6,12 +6,16 @@ import { useWarmLessonRoute } from "../hooks/useWarmLessonRoute";
 import { GALLERY_COLUMN_QUERIES } from "../lib/galleryColumns";
 import { flattenLessonPages } from "../lib/lessons";
 import { busyFadeClass } from "../lib/busyFade";
+import { PLAYLIST_PARAM, SEARCH_PARAM } from "../lib/galleryParams";
+import { usePublicPlaylists } from "../hooks/usePlaylists";
 import { settleWithoutFirstRow, whenFirstRowThumbnailsSettled } from "../lib/firstRowThumbnails";
 import type { Lesson } from "../types";
 import LessonRows from "./LessonRows";
 import LessonCardSkeleton from "@app/components/LessonCardSkeleton";
 import SearchBar from "./SearchBar";
 import SearchResults from "./SearchResults";
+import PlaylistFilter from "./PlaylistFilter";
+import GalleryPlaylistView from "./GalleryPlaylistView";
 import LangText from "@app/components/LangText";
 
 function readColumns(): number {
@@ -29,9 +33,6 @@ function useColumns(): number {
   }, []);
   return columns;
 }
-
-/** The URL's search parameter: /learn?q=css+course. */
-const SEARCH_PARAM = "q";
 
 function chunk<T>(items: T[], size: number): T[][] {
   const cols = Math.max(1, size);
@@ -63,12 +64,17 @@ export default function LessonGrid() {
     setSearchParams(
       (current) => {
         const params = new URLSearchParams(current);
-        if (next) params.set(SEARCH_PARAM, next);
-        else params.delete(SEARCH_PARAM);
+        if (next) {
+          params.set(SEARCH_PARAM, next);
+          params.delete(PLAYLIST_PARAM);
+        } else params.delete(SEARCH_PARAM);
         return params;
       },
       { replace },
     );
+  // One playlist in place of every lesson (/learn?playlist=…), unless a search is showing.
+  const selectedPlaylist = submittedQuery ? "" : (searchParams.get(PLAYLIST_PARAM) ?? "").trim();
+  const { data: publicPlaylists = [] } = usePublicPlaylists();
   const [query, setQuery] = useState(submittedQuery);
   // Back and Forward change the search under the field: show it there too.
   const [fieldQuery, setFieldQuery] = useState(submittedQuery);
@@ -137,7 +143,7 @@ export default function LessonGrid() {
   const lessons = flattenLessonPages(data?.pages);
   // The first row's thumbnails are what the page waits for (its LCP); when the
   // gallery has no such row to show, there is nothing to wait for.
-  const waitsForFirstRow = !showResults && (isPending || lessons.length > 0);
+  const waitsForFirstRow = !showResults && !selectedPlaylist && (isPending || lessons.length > 0);
   useEffect(() => {
     if (!waitsForFirstRow) settleWithoutFirstRow();
   }, [waitsForFirstRow]);
@@ -152,9 +158,10 @@ export default function LessonGrid() {
   useWarmLessonRoute(whenFirstRowThumbnailsSettled());
 
   // Auto-load the next page when the sentinel nears the viewport. Suppressed
-  // while searching: the query bar switches to backend search results
-  // instead (see the render below), so there's no infinite list to page.
-  const canPage = hasNextPage && !showResults;
+  // while searching or showing one playlist: the page shows backend search
+  // results or the playlist instead (see the render below), so there's no
+  // infinite list to page.
+  const canPage = hasNextPage && !showResults && !selectedPlaylist;
   const sentinelRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const el = sentinelRef.current;
@@ -214,7 +221,7 @@ export default function LessonGrid() {
   // a failed gallery page 0 never replaces search results. The field keeps its
   // child slot (after the status) in every branch, so a query being typed, or a
   // search still loading, keeps its field and focus.
-  if (isError && lessons.length === 0 && !showResults) {
+  if (isError && lessons.length === 0 && !showResults && !selectedPlaylist) {
     return (
       <div>
         {status}
@@ -269,7 +276,10 @@ export default function LessonGrid() {
 
       {/* Inert while dimmed: what is about to be replaced is not to be reached. */}
       <div aria-busy={isSearching} inert={isSearching} className={busyFadeClass(isSearching)}>
-        {isPending ? (
+        <PlaylistFilter playlists={publicPlaylists} selected={selectedPlaylist} />
+        {selectedPlaylist ? (
+          <GalleryPlaylistView slug={selectedPlaylist} />
+        ) : isPending ? (
           <div
             className="grid gap-5 py-5"
             style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}

@@ -9,6 +9,7 @@ import {
   insertPlaylist,
   removeLessonFromPlaylist,
   reorderPlaylistLessons,
+  listPublishedPlaylists,
   searchPublishedPlaylists,
 } from "./playlistQueries";
 import { MAX_PLAYLISTS_PER_OWNER } from "./ownerLimits";
@@ -208,32 +209,32 @@ describe("insertPlaylist", () => {
   });
 });
 
-describe("searchPublishedPlaylists", () => {
-  /** Three playlists: a course with a draft member, one all-draft, one empty. */
-  function createSearchDb(): D1Database {
-    const { db, sqlite } = openSqliteD1();
-    sqlite.exec(`
-      INSERT INTO users (id, google_sub, email, username, created_at)
-        VALUES ('owner', 'google-owner', 'owner@example.com', 'owner', 0);
-      INSERT INTO lessons (id, slug, owner_id, title, ne, thumbnail, status, created_at, updated_at) VALUES
-        ('l1', 'css-1', 'owner', 'CSS 1', 'l1.ne', 'thumbs/css-1.webp', 'published', 0, 0),
-        ('l2', 'css-2', 'owner', 'CSS 2', 'l2.ne', 'thumbs/css-2.webp', 'published', 0, 0),
-        ('l3', 'css-3', 'owner', 'CSS 3', 'l3.ne', 'thumbs/css-3.webp', 'draft', 0, 0);
-      INSERT INTO playlists (id, slug, owner_id, title, description, created_at, updated_at) VALUES
-        ('p-course', 'css-course', 'owner', 'CSS Course', 'Learn CSS in order', 0, 3),
-        ('p-drafts', 'css-drafts', 'owner', 'CSS drafts', NULL, 0, 2),
-        ('p-empty', 'css-empty', 'owner', 'Empty CSS list', NULL, 0, 1),
-        ('p-go', 'go-course', 'owner', 'Go Course', 'Not about styling', 0, 4);
-      INSERT INTO playlist_lessons (playlist_id, lesson_id, position, added_at) VALUES
-        ('p-course', 'l2', 0, 0), ('p-course', 'l1', 1, 0), ('p-course', 'l3', 2, 0),
-        ('p-drafts', 'l3', 0, 0),
-        ('p-go', 'l1', 0, 0);
-    `);
-    return db;
-  }
+/** Four playlists: a CSS course with a draft member, one all-draft, one empty, and a Go course. */
+function createPublicDb(): D1Database {
+  const { db, sqlite } = openSqliteD1();
+  sqlite.exec(`
+    INSERT INTO users (id, google_sub, email, username, created_at)
+      VALUES ('owner', 'google-owner', 'owner@example.com', 'owner', 0);
+    INSERT INTO lessons (id, slug, owner_id, title, ne, thumbnail, status, created_at, updated_at) VALUES
+      ('l1', 'css-1', 'owner', 'CSS 1', 'l1.ne', 'thumbs/css-1.webp', 'published', 0, 0),
+      ('l2', 'css-2', 'owner', 'CSS 2', 'l2.ne', 'thumbs/css-2.webp', 'published', 0, 0),
+      ('l3', 'css-3', 'owner', 'CSS 3', 'l3.ne', 'thumbs/css-3.webp', 'draft', 0, 0);
+    INSERT INTO playlists (id, slug, owner_id, title, description, created_at, updated_at) VALUES
+      ('p-course', 'css-course', 'owner', 'CSS Course', 'Learn CSS in order', 0, 3),
+      ('p-drafts', 'css-drafts', 'owner', 'CSS drafts', NULL, 0, 2),
+      ('p-empty', 'css-empty', 'owner', 'Empty CSS list', NULL, 0, 1),
+      ('p-go', 'go-course', 'owner', 'Go Course', 'Not about styling', 0, 4);
+    INSERT INTO playlist_lessons (playlist_id, lesson_id, position, added_at) VALUES
+      ('p-course', 'l2', 0, 0), ('p-course', 'l1', 1, 0), ('p-course', 'l3', 2, 0),
+      ('p-drafts', 'l3', 0, 0),
+      ('p-go', 'l1', 0, 0);
+  `);
+  return db;
+}
 
+describe("searchPublishedPlaylists", () => {
   it("finds public playlists by title or description, counting published members only", async () => {
-    const rows = await searchPublishedPlaylists(createSearchDb(), "css", 10);
+    const rows = await searchPublishedPlaylists(createPublicDb(), "css", 10);
 
     expect(rows.map((row) => row.slug)).toEqual(["css-course"]);
     expect(rows[0]).toMatchObject({
@@ -242,25 +243,42 @@ describe("searchPublishedPlaylists", () => {
       // The cover is the first published member in playlist order.
       first_lesson_thumbnail: "thumbs/css-2.webp",
     });
-    await expect(searchPublishedPlaylists(createSearchDb(), "in order", 10)).resolves.toEqual([
+    await expect(searchPublishedPlaylists(createPublicDb(), "in order", 10)).resolves.toEqual([
       expect.objectContaining({ slug: "css-course" }),
     ]);
   });
 
   it("leaves out a playlist with no published lesson, empty or all-draft", async () => {
-    const slugs = (await searchPublishedPlaylists(createSearchDb(), "CSS", 10)).map((r) => r.slug);
+    const slugs = (await searchPublishedPlaylists(createPublicDb(), "CSS", 10)).map((r) => r.slug);
 
     expect(slugs).not.toContain("css-drafts");
     expect(slugs).not.toContain("css-empty");
   });
 
   it("matches LIKE wildcards literally and stops at the limit", async () => {
-    const db = createSearchDb();
+    const db = createPublicDb();
 
     await expect(searchPublishedPlaylists(db, "%", 10)).resolves.toEqual([]);
     await expect(searchPublishedPlaylists(db, "course", 1)).resolves.toEqual([
       // Most recently updated first.
       expect.objectContaining({ slug: "go-course" }),
     ]);
+  });
+});
+
+describe("listPublishedPlaylists", () => {
+  it("lists the public playlists, most recently updated first, counting published members only", async () => {
+    const rows = await listPublishedPlaylists(createPublicDb(), 10);
+
+    expect(rows.map((row) => [row.slug, row.lesson_count])).toEqual([
+      ["go-course", 1],
+      ["css-course", 2],
+    ]);
+  });
+
+  it("stops at the limit", async () => {
+    const rows = await listPublishedPlaylists(createPublicDb(), 1);
+
+    expect(rows.map((row) => row.slug)).toEqual(["go-course"]);
   });
 });

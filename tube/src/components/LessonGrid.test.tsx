@@ -1,6 +1,6 @@
 /* oxlint-disable vitest/require-mock-type-parameters */
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 // The gallery's infinite query, as each test sets it.
@@ -17,6 +17,14 @@ vi.mock("@next-editor/infra", () => ({
     searchedFor.push(query);
     return searchState;
   },
+}));
+// The public playlists offered in the "browse by playlist" row, as each test sets them.
+let publicPlaylists: { slug: string; title: string; lessonCount: number }[];
+vi.mock("../hooks/usePlaylists", () => ({
+  usePublicPlaylists: () => ({ data: publicPlaylists }),
+}));
+vi.mock("./GalleryPlaylistView", () => ({
+  default: ({ slug }: { slug: string }) => <p>playlist view: {slug}</p>,
 }));
 vi.mock("./SearchResults", () => ({
   default: () => <p>search results</p>,
@@ -70,6 +78,7 @@ beforeEach(() => {
   firstRow.settleWithout.mockClear();
   searchState = { isPending: true, isError: false, data: undefined };
   searchedFor.length = 0;
+  publicPlaylists = [];
   vi.useFakeTimers();
   vi.stubGlobal(
     "matchMedia",
@@ -402,5 +411,96 @@ describe("LessonGrid first-row thumbnails", () => {
     typeQuery("rust");
 
     expect(firstRow.settleWithout).not.toHaveBeenCalled();
+  });
+});
+
+function WhereAmI() {
+  const location = useLocation();
+  return <p data-testid="location">{location.pathname + location.search}</p>;
+}
+
+function renderLearnAt(path: string) {
+  return render(
+    <MemoryRouter initialEntries={[path]}>
+      <LessonGrid />
+      <WhereAmI />
+    </MemoryRouter>,
+  );
+}
+
+describe("LessonGrid browse by playlist", () => {
+  const css = { slug: "css-course", title: "CSS Course", lessonCount: 43 };
+  const go = { slug: "go-course", title: "Go Course", lessonCount: 35 };
+  const withLessons = ({ morePages = false } = {}) =>
+    galleryState({
+      data: {
+        pages: [
+          { lessons: [{ slug: "intro", title: "Gallery intro" }], nextPage: morePages ? 1 : null },
+        ],
+      },
+      hasNextPage: morePages,
+    });
+
+  it("offers every public playlist in a row, with all lessons showing", () => {
+    gallery = withLessons();
+    publicPlaylists = [css, go];
+    renderLearnAt("/learn");
+
+    const row = screen.getByRole("navigation", { name: "Browse by playlist" });
+    const links = Array.from(row.querySelectorAll("a"));
+    expect(links.map((a) => a.getAttribute("href"))).toEqual([
+      "/learn",
+      "/learn?playlist=css-course",
+      "/learn?playlist=go-course",
+    ]);
+    expect(screen.getByRole("link", { name: "All lessons" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    const cssLink = screen.getByRole("link", { name: /^CSS Course/ });
+    // Read as "CSS Course, 43 lessons", not a bare number.
+    expect(cssLink).toHaveAccessibleName("CSS Course, 43 lessons");
+    expect(cssLink).not.toHaveAttribute("aria-current");
+    expect(screen.getByText("Gallery intro")).toBeInTheDocument();
+  });
+
+  it("shows the chosen playlist in place of every lesson, and stops waiting on the gallery", () => {
+    // More gallery pages exist, yet nothing pages them (jsdom has no
+    // IntersectionObserver, so a paging sentinel would throw here).
+    gallery = withLessons({ morePages: true });
+    publicPlaylists = [css, go];
+    renderLearnAt("/learn?playlist=css-course");
+
+    expect(screen.getByText("playlist view: css-course")).toBeInTheDocument();
+    expect(screen.queryByText("Gallery intro")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^CSS Course/ })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    // The gallery's first row is not on screen, so nothing waits for its thumbnails.
+    expect(firstRow.settleWithout).toHaveBeenCalled();
+  });
+
+  it("leaves the playlist for a search", () => {
+    gallery = withLessons();
+    publicPlaylists = [css];
+    renderLearnAt("/learn?playlist=css-course");
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Search authors and lessons" }), {
+      target: { value: "rust" },
+    });
+    fireEvent.submit(screen.getByRole("search"));
+
+    expect(screen.getByTestId("location")).toHaveTextContent("/learn?q=rust");
+    expect(searchedFor.at(-1)).toBe("rust");
+  });
+
+  it("has no row when there is no public playlist", () => {
+    gallery = withLessons();
+    renderLearnAt("/learn");
+
+    expect(
+      screen.queryByRole("navigation", { name: "Browse by playlist" }),
+    ).not.toBeInTheDocument();
   });
 });

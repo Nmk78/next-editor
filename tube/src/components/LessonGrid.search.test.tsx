@@ -28,6 +28,7 @@ vi.mock("../hooks/useLessons", () => ({
   }),
 }));
 vi.mock("../hooks/useWarmLessonRoute", () => ({ useWarmLessonRoute: () => {} }));
+vi.mock("../hooks/usePlaylists", () => ({ usePublicPlaylists: () => ({ data: [] }) }));
 vi.mock("./LessonCard", () => ({
   default: ({ lesson }: { lesson: { title: string } }) => <h3>{lesson.title}</h3>,
 }));
