@@ -11,12 +11,15 @@ vi.mock("./LessonCard", () => ({
 }));
 
 const { default: SearchResults } = await import("./SearchResults");
+type MoreResults = import("./SearchResults").MoreResults;
 
 const author = { username: "chan", name: "Chan Nyein Tun", avatarUrl: null };
 const lesson = (slug: string, title: string) => ({ slug, title });
 
-function results(overrides: Partial<Record<"authors" | "lessons", unknown[]>>): SearchResultsData {
-  return { authors: [], lessons: [], ...overrides } as unknown as SearchResultsData;
+function results(
+  overrides: Partial<Record<"authors" | "playlists" | "lessons", unknown[]>>,
+): SearchResultsData {
+  return { authors: [], playlists: [], lessons: [], ...overrides } as unknown as SearchResultsData;
 }
 
 function ui({
@@ -24,18 +27,35 @@ function ui({
   isError = false,
   isBusy = false,
   onRetry = vi.fn<() => void>(),
+  more,
 }: {
   data: SearchResultsData | undefined;
   isError?: boolean;
   isBusy?: boolean;
   onRetry?: () => void;
+  more?: MoreResults;
 }) {
   return (
     <MemoryRouter>
-      <SearchResults data={data} isError={isError} isBusy={isBusy} onRetry={onRetry} />
+      <SearchResults data={data} isError={isError} isBusy={isBusy} onRetry={onRetry} more={more} />
     </MemoryRouter>
   );
 }
+
+const playlist = {
+  slug: "css-course",
+  title: "CSS Course",
+  description: "",
+  lessonCount: 43,
+  thumbnail: null,
+};
+const moreResults = (overrides: Partial<MoreResults> = {}): MoreResults => ({
+  available: true,
+  loading: false,
+  failed: false,
+  load: vi.fn<() => void>(),
+  ...overrides,
+});
 
 describe("SearchResults", () => {
   it("names an author link by the author alone, not the decorative avatar initial", () => {
@@ -117,5 +137,54 @@ describe("SearchResults", () => {
 
     view.rerender(ui({ data: undefined }));
     expect(view.container).toBeEmptyDOMElement();
+  });
+  it("offers a matching playlist before the lessons, linked to its page", () => {
+    render(
+      ui({
+        data: results({ playlists: [playlist], lessons: [lesson("css-1", "CSS course 1")] }),
+      }),
+    );
+
+    const headings = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+    expect(headings).toEqual(["Playlists", "Lessons"]);
+    expect(screen.getByRole("heading", { name: "Lessons", level: 2 })).not.toHaveClass("sr-only");
+    const links = screen.getAllByRole("link", { name: /CSS Course/ });
+    expect(links.map((link) => link.getAttribute("href"))).toContain("/learn/playlist/css-course");
+  });
+
+  it("counts a playlist alone as a match", () => {
+    render(ui({ data: results({ playlists: [playlist] }) }));
+    expect(screen.queryByText("No authors or lessons match your search.")).not.toBeInTheDocument();
+  });
+
+  it("loads the next page of lessons on request", () => {
+    const more = moreResults();
+    render(ui({ data: results({ lessons: [lesson("a", "A")] }), more }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Show more lessons" }));
+    expect(more.load).toHaveBeenCalledOnce();
+  });
+
+  it("disables the request while a page loads, and offers it again after a failure", () => {
+    const view = render(
+      ui({ data: results({ lessons: [lesson("a", "A")] }), more: moreResults({ loading: true }) }),
+    );
+    expect(screen.getByRole("button", { name: "Loading…" })).toBeDisabled();
+
+    view.rerender(
+      ui({ data: results({ lessons: [lesson("a", "A")] }), more: moreResults({ failed: true }) }),
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("Failed to load more lessons");
+    expect(screen.getByRole("button", { name: "Show more lessons" })).toBeEnabled();
+  });
+
+  it("offers no more when the last page is showing", () => {
+    render(
+      ui({
+        data: results({ lessons: [lesson("a", "A")] }),
+        more: moreResults({ available: false }),
+      }),
+    );
+    expect(screen.queryByRole("button", { name: /more/i })).not.toBeInTheDocument();
   });
 });

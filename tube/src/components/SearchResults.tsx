@@ -3,6 +3,17 @@ import LangText from "@app/components/LangText";
 import { avatarProxyUrl, type SearchResults as SearchResultsData } from "@next-editor/infra";
 import { busyFadeClass, RESULTS_ENTER_CLASS } from "../lib/busyFade";
 import LessonCard from "./LessonCard";
+import PlaylistSummaryCard from "./PlaylistSummaryCard";
+
+/** The search's further pages of lessons. */
+export interface MoreResults {
+  /** Another page follows the ones shown. */
+  available: boolean;
+  loading: boolean;
+  /** The last request for another page failed. */
+  failed: boolean;
+  load: () => void;
+}
 
 interface SearchResultsProps {
   /** The submitted search's answer, or the last one while a newer search loads. */
@@ -11,16 +22,28 @@ interface SearchResultsProps {
   /** A newer search is loading and `data` is the previous answer. */
   isBusy: boolean;
   onRetry: () => void;
+  more?: MoreResults;
 }
 
-// Renders authors before lessons, per the product requirement that search
-// surface matching authors first. Unlike the empty-query gallery, results
-// here come from the backend (every published lesson/author, not just
-// what's been paged into the client) so they're not virtualized — result
-// counts are capped server-side (see infra/worker/routes/search.ts).
+const pillButton =
+  "rounded-full border border-white/10 bg-white/10 px-5 py-2 text-sm font-semibold text-white transition-all hover:bg-white hover:text-slate-950 disabled:cursor-default disabled:opacity-60";
+
+// Renders authors, then playlists, then lessons, per the product requirement
+// that search surface matching authors first; a matching playlist comes before
+// its lessons so a course is offered whole, in its own order. Unlike the
+// empty-query gallery, results here come from the backend (every published
+// lesson/playlist/author, not just what's been paged into the client) so
+// they're not virtualized. Lessons come a page at a time (see
+// infra/worker/routes/search.ts); "Show more lessons" loads the next.
 // LessonGrid owns the one search query and shows the gallery until the first
 // answer, so there is no "Searching…" step here.
-export default function SearchResults({ data, isError, isBusy, onRetry }: SearchResultsProps) {
+export default function SearchResults({
+  data,
+  isError,
+  isBusy,
+  onRetry,
+  more,
+}: SearchResultsProps) {
   if (isError && !isBusy) {
     return (
       <div className="flex flex-col items-center gap-4 py-20 text-center">
@@ -40,7 +63,7 @@ export default function SearchResults({ data, isError, isBusy, onRetry }: Search
 
   if (!data) return null;
 
-  const { authors, lessons } = data;
+  const { authors, playlists, lessons } = data;
 
   // A newer search is loading: the last answer (results or "no match") stays,
   // dimmed and inert, until it lands.
@@ -50,7 +73,7 @@ export default function SearchResults({ data, isError, isBusy, onRetry }: Search
       inert={isBusy}
       className={`${busyFadeClass(isBusy)} ${RESULTS_ENTER_CLASS}`}
     >
-      {authors.length === 0 && lessons.length === 0 && (
+      {authors.length === 0 && playlists.length === 0 && lessons.length === 0 && (
         <div className="flex justify-center py-20 text-slate-300">
           No authors or lessons match your search.
         </div>
@@ -89,15 +112,55 @@ export default function SearchResults({ data, isError, isBusy, onRetry }: Search
         </div>
       )}
 
+      {playlists.length > 0 && (
+        <div className="mb-8">
+          <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-slate-300">
+            Playlists
+          </h2>
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {playlists.map((playlist) => (
+              <PlaylistSummaryCard key={playlist.slug} playlist={playlist} />
+            ))}
+          </div>
+        </div>
+      )}
+
       {lessons.length > 0 && (
         <>
-          {/* Without it the lesson card h3s read as children of "Authors". */}
-          <h2 className="sr-only">Lessons</h2>
+          {/* Visible once there is another section to tell the lessons from;
+              otherwise only for screen readers, as before. Without it the
+              lesson card h3s read as children of the section above. */}
+          <h2
+            className={
+              playlists.length > 0
+                ? "mb-3 text-xs font-bold uppercase tracking-wider text-slate-300"
+                : "sr-only"
+            }
+          >
+            Lessons
+          </h2>
           <div className="grid grid-cols-1 gap-5 pb-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             {lessons.map((lesson) => (
               <LessonCard key={lesson.slug} lesson={lesson} />
             ))}
           </div>
+          {more?.available && (
+            <div className="flex flex-col items-center gap-3 pb-10 pt-5 text-center">
+              {more.failed && (
+                <p role="alert" className="text-sm text-red-300">
+                  Failed to load more lessons
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={more.load}
+                disabled={more.loading}
+                className={pillButton}
+              >
+                {more.loading ? "Loading…" : "Show more lessons"}
+              </button>
+            </div>
+          )}
         </>
       )}
     </div>

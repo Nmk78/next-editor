@@ -1,5 +1,6 @@
 /* oxlint-disable vitest/require-mock-type-parameters */
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 // The gallery's infinite query, as each test sets it.
@@ -85,7 +86,7 @@ afterEach(() => {
 describe("LessonGrid search while page 0 is a network fetch", () => {
   it("keeps the search box when a search starts before the first page lands", () => {
     gallery = galleryState({ isPending: true });
-    const view = render(<LessonGrid />);
+    const view = render(<LessonGrid />, { wrapper: MemoryRouter });
 
     typeQuery("rust");
 
@@ -93,7 +94,11 @@ describe("LessonGrid search while page 0 is a network fetch", () => {
     expect(screen.queryByText("search results")).not.toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Search authors and lessons" })).toHaveValue("rust");
 
-    searchState = { isPending: false, isError: false, data: { authors: [], lessons: [] } };
+    searchState = {
+      isPending: false,
+      isError: false,
+      data: { authors: [], playlists: [], lessons: [] },
+    };
     view.rerender(<LessonGrid />);
     expect(screen.getByText("search results")).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Search authors and lessons" })).toHaveValue("rust");
@@ -101,8 +106,12 @@ describe("LessonGrid search while page 0 is a network fetch", () => {
 
   it("does not replace search results with the gallery's page-0 error", () => {
     gallery = galleryState({ isPending: true });
-    searchState = { isPending: false, isError: false, data: { authors: [], lessons: [] } };
-    const view = render(<LessonGrid />);
+    searchState = {
+      isPending: false,
+      isError: false,
+      data: { authors: [], playlists: [], lessons: [] },
+    };
+    const view = render(<LessonGrid />, { wrapper: MemoryRouter });
     typeQuery("rust");
 
     gallery = galleryState({ isError: true, error: new Error("Request failed") });
@@ -114,7 +123,7 @@ describe("LessonGrid search while page 0 is a network fetch", () => {
 
   it("still shows the full-page error when page 0 fails and nobody is searching", () => {
     gallery = galleryState({ isError: true, error: new Error("Request failed") });
-    render(<LessonGrid />);
+    render(<LessonGrid />, { wrapper: MemoryRouter });
 
     expect(screen.getByRole("alert")).toHaveTextContent("Request failed");
     expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
@@ -132,7 +141,7 @@ function typeQuery(value: string) {
 describe("LessonGrid status messages", () => {
   it("announces the first page loading, then searching, through one persistent region", () => {
     gallery = galleryState({ isPending: true });
-    render(<LessonGrid />);
+    render(<LessonGrid />, { wrapper: MemoryRouter });
     const status = screen.getByRole("status");
     expect(status).toHaveTextContent("Loading lessons…");
 
@@ -145,8 +154,12 @@ describe("LessonGrid status messages", () => {
 
   it("announces when a search matches nothing", () => {
     gallery = galleryState({ isPending: true });
-    searchState = { isPending: false, isError: false, data: { authors: [], lessons: [] } };
-    render(<LessonGrid />);
+    searchState = {
+      isPending: false,
+      isError: false,
+      data: { authors: [], playlists: [], lessons: [] },
+    };
+    render(<LessonGrid />, { wrapper: MemoryRouter });
 
     typeQuery("zzz");
 
@@ -160,9 +173,13 @@ describe("LessonGrid status messages", () => {
     searchState = {
       isPending: false,
       isError: false,
-      data: { authors: [{ username: "chan" }], lessons: [{ slug: "a" }, { slug: "b" }] },
+      data: {
+        authors: [{ username: "chan" }],
+        playlists: [],
+        lessons: [{ slug: "a" }, { slug: "b" }],
+      },
     };
-    render(<LessonGrid />);
+    render(<LessonGrid />, { wrapper: MemoryRouter });
 
     typeQuery("rust");
 
@@ -172,7 +189,7 @@ describe("LessonGrid status messages", () => {
   it("leaves a failed search to its alert instead of the status region", () => {
     gallery = galleryState({ isPending: true });
     searchState = { isPending: false, isError: true, data: undefined };
-    render(<LessonGrid />);
+    render(<LessonGrid />, { wrapper: MemoryRouter });
 
     typeQuery("rust");
 
@@ -192,7 +209,7 @@ describe("LessonGrid status messages", () => {
       hasNextPage: true,
       data: { pages: [{ lessons: [{ slug: "intro", title: "Intro" }], nextPage: "d1:1" }] },
     });
-    render(<LessonGrid />);
+    render(<LessonGrid />, { wrapper: MemoryRouter });
 
     expect(screen.getByRole("status")).toHaveTextContent("Loading more lessons…");
   });
@@ -204,7 +221,7 @@ describe("LessonGrid status messages", () => {
       error: new Error("Network down"),
       data: { pages: [{ lessons: [{ slug: "intro", title: "Intro" }], nextPage: "d1:1" }] },
     });
-    render(<LessonGrid />);
+    render(<LessonGrid />, { wrapper: MemoryRouter });
 
     expect(screen.getByRole("alert")).toHaveTextContent("Network down");
     expect(screen.getByRole("button", { name: "Load more" })).toBeInTheDocument();
@@ -214,7 +231,7 @@ describe("LessonGrid status messages", () => {
 describe("LessonGrid clear search", () => {
   it("returns focus to the search field when Clear search removes itself", () => {
     gallery = galleryState({ isPending: true });
-    render(<LessonGrid />);
+    render(<LessonGrid />, { wrapper: MemoryRouter });
     typeQuery("rust");
 
     const clear = screen.getByRole("button", { name: "Clear search" });
@@ -233,12 +250,16 @@ describe("LessonGrid clear search", () => {
 
 describe("LessonGrid search on Enter", () => {
   const introPage = { pages: [{ lessons: [{ slug: "intro", title: "Intro" }], nextPage: null }] };
-  const found = { isPending: false, isError: false, data: { authors: [], lessons: [] } };
+  const found = {
+    isPending: false,
+    isError: false,
+    data: { authors: [], playlists: [], lessons: [] },
+  };
 
   it("does not search while the reader types, only when they press Enter", () => {
     gallery = galleryState({ data: introPage });
     searchState = found;
-    render(<LessonGrid />);
+    render(<LessonGrid />, { wrapper: MemoryRouter });
     const field = screen.getByRole("textbox", { name: "Search authors and lessons" });
 
     for (const value of ["r", "ru", "rus", "rust"]) {
@@ -257,7 +278,7 @@ describe("LessonGrid search on Enter", () => {
 
   it("keeps the gallery on screen, dimmed and busy, until the first search answers", () => {
     gallery = galleryState({ data: introPage });
-    render(<LessonGrid />);
+    render(<LessonGrid />, { wrapper: MemoryRouter });
 
     typeQuery("rust");
 
@@ -270,7 +291,7 @@ describe("LessonGrid search on Enter", () => {
   it("keeps the results until Enter is pressed again after editing the query", () => {
     gallery = galleryState({ data: introPage });
     searchState = found;
-    render(<LessonGrid />);
+    render(<LessonGrid />, { wrapper: MemoryRouter });
     typeQuery("rust");
 
     fireEvent.change(screen.getByRole("textbox", { name: "Search authors and lessons" }), {
@@ -286,7 +307,7 @@ describe("LessonGrid search on Enter", () => {
   it("goes back to the gallery on Escape, or on Enter with an empty field", () => {
     gallery = galleryState({ data: introPage });
     searchState = found;
-    render(<LessonGrid />);
+    render(<LessonGrid />, { wrapper: MemoryRouter });
     const field = () => screen.getByRole("textbox", { name: "Search authors and lessons" });
 
     typeQuery("rust");
@@ -302,7 +323,7 @@ describe("LessonGrid search on Enter", () => {
   it("ignores the Enter that ends an input method's composition", () => {
     gallery = galleryState({ data: introPage });
     searchState = found;
-    render(<LessonGrid />);
+    render(<LessonGrid />, { wrapper: MemoryRouter });
     const field = screen.getByRole("textbox", { name: "Search authors and lessons" });
     fireEvent.change(field, { target: { value: "rust" } });
 
@@ -320,7 +341,7 @@ describe("LessonGrid virtual list offset", () => {
   it("measures the list's distance from the page top once page 0 lands after mount", () => {
     vi.spyOn(HTMLElement.prototype, "offsetTop", "get").mockReturnValue(240);
     gallery = galleryState({ isPending: true });
-    const view = render(<LessonGrid />);
+    const view = render(<LessonGrid />, { wrapper: MemoryRouter });
 
     gallery = galleryState({
       data: { pages: [{ lessons: [{ slug: "intro", title: "Intro" }], nextPage: null }] },
@@ -338,7 +359,7 @@ describe("LessonGrid first-row thumbnails", () => {
 
   it("waits on the first row's thumbnails once page 0 has lessons", () => {
     gallery = galleryState({ isPending: true });
-    const view = render(<LessonGrid />);
+    const view = render(<LessonGrid />, { wrapper: MemoryRouter });
     expect(firstRow.settleWithout).not.toHaveBeenCalled();
 
     gallery = galleryState({ data: introPage });
@@ -354,7 +375,7 @@ describe("LessonGrid first-row thumbnails", () => {
     ["page 0 failed", { isError: true, error: new Error("Request failed") }],
   ])("has nothing to wait for when %s", (_case, state) => {
     gallery = galleryState(state);
-    render(<LessonGrid />);
+    render(<LessonGrid />, { wrapper: MemoryRouter });
 
     expect(firstRow.settleWithout).toHaveBeenCalled();
     expect(firstRow.observe).not.toHaveBeenCalled();
@@ -362,8 +383,12 @@ describe("LessonGrid first-row thumbnails", () => {
 
   it("has nothing to wait for once search results replace the gallery", () => {
     gallery = galleryState({ isPending: true });
-    searchState = { isPending: false, isError: false, data: { authors: [], lessons: [] } };
-    render(<LessonGrid />);
+    searchState = {
+      isPending: false,
+      isError: false,
+      data: { authors: [], playlists: [], lessons: [] },
+    };
+    render(<LessonGrid />, { wrapper: MemoryRouter });
 
     typeQuery("rust");
 
@@ -372,7 +397,7 @@ describe("LessonGrid first-row thumbnails", () => {
 
   it("keeps waiting on the gallery while a search it stays up for is still loading", () => {
     gallery = galleryState({ isPending: true });
-    render(<LessonGrid />);
+    render(<LessonGrid />, { wrapper: MemoryRouter });
 
     typeQuery("rust");
 

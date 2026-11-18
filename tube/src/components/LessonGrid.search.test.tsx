@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter } from "react-router";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import type { SearchResults } from "@next-editor/infra";
 
@@ -101,7 +101,7 @@ describe("LessonGrid search with the real query cache", () => {
 
     fireEvent.submit(screen.getByRole("search"));
     expect(await screen.findByRole("heading", { name: "Closures" })).toBeInTheDocument();
-    expect(api.search.mock.calls).toEqual([["rust"]]);
+    expect(api.search.mock.calls).toEqual([["rust", 0]]);
     expect(screen.getByRole("status")).toHaveTextContent("Results for “rust”: 1 lesson");
   });
 
@@ -146,7 +146,7 @@ describe("LessonGrid search with the real query cache", () => {
     expect(await screen.findByText("Gallery intro")).toBeInTheDocument();
 
     submit("traits");
-    await waitFor(() => expect(api.search).toHaveBeenCalledWith("traits"));
+    await waitFor(() => expect(api.search).toHaveBeenCalledWith("traits", 0));
     expect(screen.getByText("Gallery intro")).toBeInTheDocument();
     expect(busyRegionOf("Gallery intro")).toHaveAttribute("aria-busy", "true");
     expect(screen.queryByRole("heading", { name: "Closures" })).not.toBeInTheDocument();
@@ -205,5 +205,104 @@ describe("LessonGrid search with the real query cache", () => {
 
     retry.resolve(found("Lifetimes"));
     expect(await screen.findByRole("heading", { name: "Lifetimes" })).toBeInTheDocument();
+  });
+});
+
+/** /learn with the grid, a lesson page to open, and Back, at `entries` (the last is current). */
+function renderLearnAt(...entries: string[]) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  function Where() {
+    const location = useLocation();
+    const navigate = useNavigate();
+    return (
+      <>
+        <p data-testid="location">{location.pathname + location.search}</p>
+        <button type="button" onClick={() => navigate(-1)}>
+          Back
+        </button>
+        <button type="button" onClick={() => navigate("/learn/closures")}>
+          Open lesson
+        </button>
+      </>
+    );
+  }
+  return render(
+    <MemoryRouter initialEntries={entries}>
+      <QueryClientProvider client={client}>
+        <Routes>
+          <Route
+            path="/learn"
+            element={
+              <>
+                <LessonGrid />
+                <Where />
+              </>
+            }
+          />
+          <Route path="/learn/:slug" element={<Where />} />
+          <Route path="/start" element={<Where />} />
+        </Routes>
+      </QueryClientProvider>
+    </MemoryRouter>,
+  );
+}
+
+const location = () => screen.getByTestId("location").textContent;
+const back = () => fireEvent.click(screen.getByRole("button", { name: "Back" }));
+
+describe("LessonGrid search in the URL", () => {
+  it("puts the search in the URL, so Back from a result brings its results back", async () => {
+    api.search.mockResolvedValue(found("Closures"));
+    renderLearnAt("/learn");
+
+    submit("rust");
+    expect(await screen.findByRole("heading", { name: "Closures" })).toBeInTheDocument();
+    expect(location()).toBe("/learn?q=rust");
+
+    fireEvent.click(screen.getByRole("button", { name: "Open lesson" }));
+    expect(location()).toBe("/learn/closures");
+    back();
+
+    expect(location()).toBe("/learn?q=rust");
+    expect(await screen.findByRole("heading", { name: "Closures" })).toBeInTheDocument();
+    expect(field()).toHaveValue("rust");
+    // From the cache: coming back is not a new search.
+    expect(api.search).toHaveBeenCalledOnce();
+  });
+
+  it("opens a search link with its results", async () => {
+    api.search.mockResolvedValue(found("Closures"));
+    renderLearnAt("/learn?q=rust");
+
+    expect(field()).toHaveValue("rust");
+    expect(await screen.findByRole("heading", { name: "Closures" })).toBeInTheDocument();
+    expect(api.search).toHaveBeenCalledWith("rust", 0);
+  });
+
+  it("clears the search without leaving it for Back to reopen", async () => {
+    api.search.mockResolvedValue(found("Closures"));
+    renderLearnAt("/start", "/learn");
+
+    submit("rust");
+    await screen.findByRole("heading", { name: "Closures" });
+    fireEvent.keyDown(field(), { key: "Escape" });
+    expect(location()).toBe("/learn");
+    expect(await screen.findByText("Gallery intro")).toBeInTheDocument();
+
+    back();
+    expect(location()).toBe("/learn");
+    expect(screen.queryByRole("heading", { name: "Closures" })).not.toBeInTheDocument();
+  });
+
+  it("adds no history entry for Enter on the search already showing", async () => {
+    api.search.mockResolvedValue(found("Closures"));
+    renderLearnAt("/start", "/learn");
+
+    submit("rust");
+    await screen.findByRole("heading", { name: "Closures" });
+    submit("rust");
+
+    back();
+    expect(location()).toBe("/learn");
   });
 });

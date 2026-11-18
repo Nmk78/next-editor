@@ -6,8 +6,9 @@ import { isUniqueViolation } from "./uniqueViolation";
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 // Escapes LIKE metacharacters in user-supplied search text so `%`, `_`, and
-// `\` are matched literally instead of acting as wildcards.
-function escapeLikePattern(value: string): string {
+// `\` are matched literally instead of acting as wildcards. Every search query
+// (lessons, users, playlists) escapes through this one rule.
+export function escapeLikePattern(value: string): string {
   return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
 }
 
@@ -582,10 +583,13 @@ export async function searchUsers(db: D1Database, q: string, limit: number): Pro
 // tags. `tags` is stored as a JSON array string, so the LIKE match here is a
 // substring match against that raw JSON text (same fields the old client-side
 // filter checked, just across every published lesson instead of only loaded pages).
+// `offset` pages through the matches; the order is total (published_at, then
+// id), as listPublishedLessons explains, so no match lands on two pages.
 export async function searchPublishedLessons(
   db: D1Database,
   q: string,
   limit: number,
+  offset = 0,
 ): Promise<LessonRow[]> {
   const like = `%${escapeLikePattern(q)}%`;
   const result = await db
@@ -593,9 +597,9 @@ export async function searchPublishedLessons(
       `SELECT * FROM lessons
        WHERE status = 'published' AND (title LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\' OR tags LIKE ? ESCAPE '\\')
        ORDER BY published_at DESC, id DESC
-       LIMIT ?`,
+       LIMIT ? OFFSET ?`,
     )
-    .bind(like, like, like, limit)
+    .bind(like, like, like, limit, offset)
     .all<LessonRow>();
   return result.results ?? [];
 }
