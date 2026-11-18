@@ -3,13 +3,14 @@ import { ListMusic } from "lucide-react";
 import LangText from "@app/components/LangText";
 import type { PlaylistSummary } from "@next-editor/infra";
 import { resolveThumb } from "../lib/links";
+import { playlistHref } from "../lib/courseNavigation";
 import ThumbnailTile from "./ThumbnailTile";
 
 // Read-only playlist card for the public author profile — the same thumbnail
 // + lesson-count visual as the owner's PlaylistCard, but with no manage menu
 // (a visitor can only open the playlist, not rename/reorder/delete it).
 export default function PlaylistSummaryCard({ playlist }: { playlist: PlaylistSummary }) {
-  const href = `/learn/playlist/${playlist.slug}`;
+  const href = playlistHref(playlist.slug);
 
   return (
     <div className="group">

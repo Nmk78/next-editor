@@ -1,15 +1,18 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import Editor from "@app/components/Editor";
 import { playbackSettingsStore } from "@app/stores/playbackSettingsStore";
 import type { Lesson } from "../types";
 import { usePlaylist } from "../hooks/usePlaylists";
+import { coursePosition, lessonHref } from "../lib/courseNavigation";
 import Breadcrumb from "@app/components/Breadcrumb";
 import { useEmbedded } from "@app/utils/embed";
+import CourseNav from "./CourseNav";
 
 interface LessonDetailLocationState {
-  /** Set by the "Continue to Next" auto-advance navigation so the next lesson
-   *  always starts playing, regardless of the persisted Autoplay setting. */
+  /** Set by the "Continue to Next" auto-advance navigation (and by choosing
+   *  "Up next" once a lesson ends) so the next lesson always starts playing,
+   *  regardless of the persisted Autoplay setting. */
   autoplay?: boolean;
 }
 
@@ -21,19 +24,27 @@ export default function LessonDetail({ lesson }: { lesson: Lesson }) {
   const location = useLocation();
   const embedded = useEmbedded();
 
-  const currentIndex = playlist?.lessons.findIndex((l) => l.slug === lesson.slug) ?? -1;
   // A stale/foreign `?list=` (lesson isn't actually in the resolved playlist) is
   // treated as no playlist context at all.
-  const playlistMode = Boolean(playlist && currentIndex !== -1);
-  const nextLesson = playlistMode && playlist ? playlist.lessons[currentIndex + 1] : undefined;
+  const position = coursePosition(playlist, lesson.slug);
+  const playlistMode = position !== null;
+  const nextLesson = position?.next;
+  // The lesson that last played to its end without continuing by itself, so the
+  // header offers the next one. Held by slug: on another lesson it no longer applies.
+  const [endedSlug, setEndedSlug] = useState<string | null>(null);
+
+  const playNext = () => {
+    if (!nextLesson || !listSlug) return;
+    navigate(lessonHref(nextLesson.slug, listSlug), {
+      state: { autoplay: true } satisfies LessonDetailLocationState,
+    });
+  };
 
   const handleEnded = () => {
     if (!nextLesson || !listSlug) return;
     const { continueToNext } = playbackSettingsStore.getSnapshot().context;
-    if (!continueToNext) return;
-    navigate(`/learn/${nextLesson.slug}?list=${listSlug}`, {
-      state: { autoplay: true } satisfies LessonDetailLocationState,
-    });
+    if (continueToNext) playNext();
+    else setEndedSlug(lesson.slug);
   };
 
   // Only an in-app auto-advance navigation sets this. Router state isn't part of
@@ -55,11 +66,26 @@ export default function LessonDetail({ lesson }: { lesson: Lesson }) {
     window.history.replaceState({ ...window.history.state, usr: null }, "");
   }, [autoplayOverride, location.key]);
 
+  // Played through a playlist, the header carries the playlist's navigation;
+  // otherwise the plain trail back to the gallery. An embed has neither.
+  const breadcrumb = embedded ? undefined : position && playlist && listSlug ? (
+    <CourseNav
+      lesson={lesson}
+      playlist={playlist}
+      listSlug={listSlug}
+      position={position}
+      ended={endedSlug === lesson.slug}
+      onPlayNext={playNext}
+    />
+  ) : (
+    <Breadcrumb title={lesson.title} />
+  );
+
   return (
     <Editor
       readOnly
       recordingUrl={`/${lesson.ne}`}
-      breadcrumb={embedded ? undefined : <Breadcrumb title={lesson.title} />}
+      breadcrumb={breadcrumb}
       playlistMode={playlistMode}
       onEnded={handleEnded}
       autoplayOverride={autoplayOverride}
