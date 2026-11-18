@@ -23,3 +23,9 @@ export interface Playlist {
   description: string;
   lessons: Lesson[];
 }
+
+/** A public playlist by name only: one a lesson belongs to. */
+export interface PlaylistRef {
+  slug: string;
+  title: string;
+}

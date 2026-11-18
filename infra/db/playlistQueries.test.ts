@@ -9,6 +9,7 @@ import {
   insertPlaylist,
   removeLessonFromPlaylist,
   reorderPlaylistLessons,
+  listPlaylistsOfPublishedLesson,
   listPublishedPlaylists,
   searchPublishedPlaylists,
 } from "./playlistQueries";
@@ -280,5 +281,32 @@ describe("listPublishedPlaylists", () => {
     const rows = await listPublishedPlaylists(createPublicDb(), 1);
 
     expect(rows.map((row) => row.slug)).toEqual(["go-course"]);
+  });
+});
+
+describe("listPlaylistsOfPublishedLesson", () => {
+  it("names the playlists a lesson belongs to, most recently updated first", async () => {
+    const db = createPublicDb();
+
+    await expect(listPlaylistsOfPublishedLesson(db, "css-1", 10)).resolves.toEqual([
+      { slug: "go-course", title: "Go Course" },
+      { slug: "css-course", title: "CSS Course" },
+    ]);
+    await expect(listPlaylistsOfPublishedLesson(db, "css-2", 10)).resolves.toEqual([
+      { slug: "css-course", title: "CSS Course" },
+    ]);
+  });
+
+  it("names none for a draft lesson, or one it does not know", async () => {
+    const db = createPublicDb();
+
+    await expect(listPlaylistsOfPublishedLesson(db, "css-3", 10)).resolves.toEqual([]);
+    await expect(listPlaylistsOfPublishedLesson(db, "nope", 10)).resolves.toEqual([]);
+  });
+
+  it("stops at the limit", async () => {
+    await expect(listPlaylistsOfPublishedLesson(createPublicDb(), "css-1", 1)).resolves.toEqual([
+      { slug: "go-course", title: "Go Course" },
+    ]);
   });
 });

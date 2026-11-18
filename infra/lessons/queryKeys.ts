@@ -39,6 +39,8 @@ export const playlistKeys = {
   detail: (slug: string | undefined) => ["playlists", "detail", slug] as const,
   /** Every public playlist, for the gallery's "browse by playlist" row (tube's usePublicPlaylists). */
   index: ["playlists", "index"] as const,
+  /** The public playlists one lesson belongs to (tube's useLessonPlaylists). */
+  ofLesson: (lessonSlug: string | undefined) => ["playlists", "of-lesson", lessonSlug] as const,
 };
 
 export const authorKeys = {

@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { fetchPublicPlaylists, findPlaylistBySlug } from "../lib/playlists";
+import { fetchLessonPlaylists, fetchPublicPlaylists, findPlaylistBySlug } from "../lib/playlists";
 import { playlistKeys, primeLessonDetails } from "../../../infra/lessons/queryKeys";
 
 // Single playlist by slug for the public detail route and the lesson page's
@@ -36,6 +36,18 @@ export function usePublicPlaylists() {
   return useQuery({
     queryKey: playlistKeys.index,
     queryFn: fetchPublicPlaylists,
+    staleTime: 60_000,
+  });
+}
+
+// The public playlists one lesson belongs to, for a lesson page opened without
+// `?list=`. Disabled while `lessonSlug` is undefined (the page already knows
+// its playlist, or should not look for one).
+export function useLessonPlaylists(lessonSlug: string | undefined) {
+  return useQuery({
+    queryKey: playlistKeys.ofLesson(lessonSlug),
+    queryFn: () => fetchLessonPlaylists(lessonSlug!),
+    enabled: !!lessonSlug,
     staleTime: 60_000,
   });
 }

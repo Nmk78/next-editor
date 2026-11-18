@@ -19,6 +19,7 @@ import {
   slugifyTitle,
 } from "../../db/slug";
 import { MAX_LESSONS_PER_OWNER } from "../../db/ownerLimits";
+import { listPlaylistsOfPublishedLesson } from "../../db/playlistQueries";
 import { isUniqueViolation } from "../../db/uniqueViolation";
 import { lessonRowToOwnedLesson } from "../../db/types";
 import { requireUser } from "../auth/requireUser";
@@ -358,6 +359,23 @@ lessonsRoute.get("/mine", requireUser, async (c) => {
 
   const rows = await listOwnedLessons(c.env.DB, user.id);
   return c.json({ lessons: rows.map(lessonRowToOwnedLesson) });
+});
+
+// The most playlists GET /api/lessons/:slug/playlists names.
+const LESSON_PLAYLIST_LIMIT = 10;
+
+// Public: the playlists a published lesson belongs to, so its page can offer
+// the lessons around it when it was opened without `?list=` (from the gallery,
+// search or a shared link). Its own path rather than a field on the lesson:
+// the gallery and search prime each lesson's detail query with the lesson as
+// they list it, which carries no playlists.
+lessonsRoute.get("/:slug/playlists", async (c) => {
+  const playlists = await listPlaylistsOfPublishedLesson(
+    c.env.DB,
+    c.req.param("slug"),
+    LESSON_PLAYLIST_LIMIT,
+  );
+  return c.json({ playlists });
 });
 
 // Registered last: Hono dispatches in registration order, so a "/:slug" GET

@@ -22,7 +22,18 @@ vi.mock("@app/components/Editor", () => ({
   },
 }));
 const playlistQuery = vi.hoisted(() => ({ data: undefined as Playlist | null | undefined }));
-vi.mock("../hooks/usePlaylists", () => ({ usePlaylist: () => playlistQuery }));
+// The playlists the lesson itself belongs to, and every slug the page asked about.
+const ownPlaylists = vi.hoisted(() => ({
+  data: undefined as { slug: string; title: string }[] | undefined,
+  askedFor: [] as (string | undefined)[],
+}));
+vi.mock("../hooks/usePlaylists", () => ({
+  usePlaylist: (slug?: string) => (slug ? playlistQuery : { data: undefined }),
+  useLessonPlaylists: (slug?: string) => {
+    ownPlaylists.askedFor.push(slug);
+    return { data: slug ? ownPlaylists.data : undefined };
+  },
+}));
 
 const { default: LessonDetail } = await import("./LessonDetail");
 
@@ -53,7 +64,7 @@ function LessonRoute() {
 }
 
 function renderAt(path: string) {
-  render(
+  return render(
     <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route path="/learn/:slug" element={<LessonRoute />} />
@@ -67,6 +78,8 @@ const endPlayback = () => act(() => editor.props.onEnded?.());
 
 afterEach(() => {
   playlistQuery.data = undefined;
+  ownPlaylists.data = undefined;
+  ownPlaylists.askedFor.length = 0;
   playbackSettingsStore.trigger.setContinueToNext({ continueToNext: false });
 });
 
@@ -138,5 +151,62 @@ describe("LessonDetail", () => {
     endPlayback();
     expect(location()).toBe("/learn/css-2");
     expect(screen.queryByRole("button", { name: /Up next/ })).not.toBeInTheDocument();
+  });
+});
+
+describe("LessonDetail without ?list=", () => {
+  const css = { slug: "css-course", title: "CSS Course" };
+
+  it("plays the lesson through its playlist when it belongs to exactly one", () => {
+    ownPlaylists.data = [css];
+    playlistQuery.data = playlist;
+    renderAt("/learn/css-2");
+
+    expect(screen.getByRole("link", { name: "CSS Course" })).toHaveAttribute(
+      "href",
+      "/learn/playlist/css-course",
+    );
+    expect(screen.getByRole("link", { name: "Next lesson: CSS course 3" })).toHaveAttribute(
+      "href",
+      "/learn/css-3?list=css-course",
+    );
+    expect(editor.props.playlistMode).toBe(true);
+    // The address stays as it was opened.
+    expect(location()).toBe("/learn/css-2");
+  });
+
+  it("continues through that playlist when Continue to Next is on", () => {
+    ownPlaylists.data = [css];
+    playlistQuery.data = playlist;
+    playbackSettingsStore.trigger.setContinueToNext({ continueToNext: true });
+    renderAt("/learn/css-2");
+
+    endPlayback();
+    expect(location()).toBe("/learn/css-3?list=css-course");
+  });
+
+  it("plays on its own when the lesson belongs to several playlists, or to none", () => {
+    playlistQuery.data = playlist;
+    for (const own of [[css, { slug: "other", title: "Other" }], []]) {
+      ownPlaylists.data = own;
+      const view = renderAt("/learn/css-2");
+
+      expect(screen.queryByRole("link", { name: /Next lesson/ })).not.toBeInTheDocument();
+      expect(editor.props.playlistMode).toBe(false);
+      view.unmount();
+    }
+  });
+
+  it("does not look when ?list= names the playlist, or inside an embed", () => {
+    ownPlaylists.data = [css];
+    playlistQuery.data = playlist;
+
+    const listed = renderAt("/learn/css-2?list=css-course");
+    expect(ownPlaylists.askedFor.every((slug) => slug === undefined)).toBe(true);
+    listed.unmount();
+
+    renderAt("/learn/css-2?embed=true");
+    expect(ownPlaylists.askedFor.every((slug) => slug === undefined)).toBe(true);
+    expect(editor.props.playlistMode).toBe(false);
   });
 });

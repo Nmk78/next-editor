@@ -1,4 +1,5 @@
 import type { PlaylistSummary } from "@next-editor/infra";
+import type { PlaylistRef } from "../../../infra/lessons/types";
 import type { Playlist } from "../types";
 import { findCatalogItem, getCatalogJson } from "./catalogRequest";
 
@@ -16,5 +17,16 @@ export async function findPlaylistBySlug(slug: string): Promise<Playlist | null>
  */
 export async function fetchPublicPlaylists(): Promise<PlaylistSummary[]> {
   const body = await getCatalogJson<{ playlists: PlaylistSummary[] }>("/api/playlists");
+  return body?.playlists ?? [];
+}
+
+/**
+ * The public playlists a lesson belongs to (none for a draft or unknown one).
+ * A host without the Worker knows of none.
+ */
+export async function fetchLessonPlaylists(lessonSlug: string): Promise<PlaylistRef[]> {
+  const body = await getCatalogJson<{ playlists: PlaylistRef[] }>(
+    `/api/lessons/${encodeURIComponent(lessonSlug)}/playlists`,
+  );
   return body?.playlists ?? [];
 }

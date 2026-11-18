@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useSearchParams } from "react-router";
 import Editor from "@app/components/Editor";
 import { playbackSettingsStore } from "@app/stores/playbackSettingsStore";
 import type { Lesson } from "../types";
-import { usePlaylist } from "../hooks/usePlaylists";
+import { useLessonPlaylists, usePlaylist } from "../hooks/usePlaylists";
 import { coursePosition, lessonHref } from "../lib/courseNavigation";
 import Breadcrumb from "@app/components/Breadcrumb";
 import { useEmbedded } from "@app/utils/embed";
@@ -18,11 +18,19 @@ interface LessonDetailLocationState {
 
 export default function LessonDetail({ lesson }: { lesson: Lesson }) {
   const [searchParams] = useSearchParams();
-  const listSlug = searchParams.get("list") ?? undefined;
-  const { data: playlist } = usePlaylist(listSlug);
+  const listParam = searchParams.get("list") ?? undefined;
   const navigate = useNavigate();
   const location = useLocation();
   const embedded = useEmbedded();
+  // Opened without `?list=` (from the gallery, search or a shared link), the
+  // lesson is played through its playlist when it belongs to exactly one;
+  // with none, or several to choose between, it is played on its own as
+  // before. An embed never looks: it plays only what the embedding page chose.
+  const { data: ownPlaylists } = useLessonPlaylists(
+    listParam || embedded ? undefined : lesson.slug,
+  );
+  const listSlug = listParam ?? (ownPlaylists?.length === 1 ? ownPlaylists[0].slug : undefined);
+  const { data: playlist } = usePlaylist(listSlug);
 
   // A stale/foreign `?list=` (lesson isn't actually in the resolved playlist) is
   // treated as no playlist context at all.

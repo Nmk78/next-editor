@@ -215,6 +215,29 @@ export function publishedPlaylistsByOwnerStatement(
     .bind(value);
 }
 
+// Backs GET /api/lessons/:slug/playlists: the public playlists a published
+// lesson belongs to, most recently updated first, so a lesson opened without
+// `?list=` (from the gallery, search or a shared link) can still find its
+// playlist. A draft (or unknown) lesson belongs to none.
+export async function listPlaylistsOfPublishedLesson(
+  db: D1Database,
+  lessonSlug: string,
+  limit: number,
+): Promise<{ slug: string; title: string }[]> {
+  const result = await db
+    .prepare(
+      `SELECT playlists.slug, playlists.title FROM playlists
+       JOIN playlist_lessons ON playlist_lessons.playlist_id = playlists.id
+       JOIN lessons ON lessons.id = playlist_lessons.lesson_id
+       WHERE lessons.slug = ? AND lessons.status = 'published'
+       ORDER BY playlists.updated_at DESC, playlists.id DESC
+       LIMIT ?`,
+    )
+    .bind(lessonSlug, limit)
+    .all<{ slug: string; title: string }>();
+  return result.results ?? [];
+}
+
 // Backs GET /api/playlists, the gallery's "browse by playlist" row: every
 // owner's public playlists, most recently updated first (as the author profile
 // orders them), up to `limit`.
